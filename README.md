@@ -40,6 +40,19 @@ Use `--no-autostart` to disable an existing login entry. Audio download and logi
 
 No location is inferred from your IP or silently selected. Without a saved district, no calls are scheduled. The master switch pauses all calls; Settings can disable individual prayers.
 
+## Pause other media during ezan
+
+**Pause other media during ezan** is enabled by default and can be turned off in Settings. Before either a scheduled ezan or a Listen preview starts, Vakit requests a pause from:
+
+- **Living Room** (`ubuntu-tv-launcher`): through its private, same-user Unix control socket. The updated Living Room adapter pauses HTML audio/video in its own Chrome pages and iframe contexts, including background tabs. Restart Living Room once after updating its backend to activate this support.
+- **Other desktop players:** through the session's standard MPRIS media controls, including compatible browsers and music/video players. Already-paused players are left alone. A player that cannot pause but supports Stop is stopped instead.
+
+Checks continue approximately once per second while ezan plays, so compatible media restarted during the call is paused again. Playback is **never automatically resumed** when ezan finishes or you press Stop. No global audio mute is used; Vakit's own ezan remains audible.
+
+This is best-effort media control, not a system-wide audio blocker. Games, calls, Web Audio and applications without compatible controls may keep producing sound. Unresponsive players are skipped rather than preventing ezan playback. Initial pausing may add a short delay before audio starts. Pausing checks end on Stop, audio completion/error or quitting Vakit. No playback locks or background media service remain after exit.
+
+The Living Room adapter is a separate local project change; cloning Vakit alone does not install or update Living Room. If its running version lacks `pause_media`, Vakit shows a warning and still tries MPRIS.
+
 ## How it runs
 
 This is an ordinary **user desktop process**, not a system service or browser app:

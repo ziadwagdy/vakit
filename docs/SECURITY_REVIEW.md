@@ -31,7 +31,7 @@ There is no root daemon, system-wide service, web server, remote control endpoin
 
 The reproducible checks are in the README and GitHub Actions workflow:
 
-- **26 unit/security regression tests** cover prayer scheduling, timezone/DST behavior, duplicates, missing/invalid timetable rows, resume handling, path traversal, redirects, oversized responses, APK checksum/size rejection, private writes, desktop quoting and corrupted state.
+- **32 unit/security regression tests** cover prayer scheduling, timezone/DST behavior, duplicates, missing/invalid timetable rows, resume handling, path traversal, redirects, oversized responses, APK checksum/size rejection, private writes, desktop quoting, corrupted state and media interruption boundaries.
 - GTK smoke test uses isolated settings and synthetic location data; checks selection/save, timetable display, master pause, hide/reopen and window construction. It does not alter a user's saved location or startup preference.
 - An isolated installer check covered fresh-install defaults, explicit startup enable/disable, preserving preferences across updates, customized XDG paths, and desktop command paths containing spaces/percent signs. Desktop entry validation passed.
 - Live check reads official country/province/district lists and the dated Istanbul timetable. It is opt-in and is not a complete validation of every location Diyanet publishes.
@@ -50,3 +50,9 @@ Local checks ran with Python 3.14 and the installed Ubuntu GTK/GStreamer stack. 
 5. **Audio pin updates:** a changed official APK intentionally blocks fresh audio installation. A maintainer must review and update the pin; the app never accepts a server-provided checksum automatically. Previously downloaded recordings remain local.
 6. **Content rights:** the MIT license covers this project's code/icon only. No Diyanet content is shipped here, and no third-party redistribution authorization is claimed. Establish appropriate rights before shipping bundled recordings/data or offering a broader service.
 7. **Review scope:** this is a small initial source review, not a formal certification, fuzzing campaign, dependency-CVE audit or long-running reliability study. Report newly discovered issues privately via SECURITY.md.
+
+## Local media integration review
+
+The optional media interruption feature uses a same-session MPRIS client and the existing private Living Room Unix socket. Vakit opens no new listening port. Socket discovery accepts only expected instance-directory names, private same-user directories/sockets and same-user peer credentials. The only sent action is the fixed `pause_media`; no command, script, address or credential is accepted from configuration. MPRIS calls disable automatic service activation and use Pause/Stop, never PlayPause or Play. Calls have timeouts and run outside the GTK thread.
+
+The Living Room companion change also checks the socket peer UID and accepts one fixed action that evaluates a constant media-pause expression only in its owned Chrome instance. It does not add a phone/LAN route or expose arbitrary CDP operations. Tests cover page/iframe contexts, private socket routing and invalid browser endpoints. A separate-instance silent media check verifies multiple playing pages and cross-origin iframe targets, repeated pausing, no automatic resume and manual resume after cancellation. This is not a guarantee for every streaming provider or nonstandard audio source.

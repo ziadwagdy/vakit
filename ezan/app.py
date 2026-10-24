@@ -9,8 +9,9 @@ from gi.repository import Gtk, Gio, GLib, Gdk
 
 from .core import (BASE, Diyanet, LABELS, MAKAMS, PRAYERS, config_dir, data_dir,
                    load_config, load_fired, write_json, events, due_events)
-from .audio import Player, install_sounds, sounds_ready
+from .audio import Player, install_sounds, sound_path, sounds_ready
 from .desktop import APP_ID, autostart_path, set_autostart
+from .media import MediaInterrupter
 
 CSS = b'''
 window { background: #f5f4ef; color: #193b35; }
@@ -57,6 +58,8 @@ class Vakit(Gtk.Application):
         self.next_fetch = 0
         self.status_text = 'Choose your Diyanet location to get started.'
         self.playing = False
+        self.media = MediaInterrupter()
+        self.play_request = 0
 
     def do_startup(self):
         Gtk.Application.do_startup(self)
@@ -76,7 +79,6 @@ class Vakit(Gtk.Application):
     def do_command_line(self, command_line):
         args = command_line.get_arguments()[1:]
         if '--quit' in args:
-            self.player.stop()
             self.quit()
         elif '--background' not in args:
             self.activate()
@@ -92,6 +94,8 @@ class Vakit(Gtk.Application):
             self.show_settings()
 
     def do_shutdown(self):
+        self.play_request += 1
+        self.media.stop()
         self.player.stop()
         Gtk.Application.do_shutdown(self)
 
@@ -230,28 +234,56 @@ class Vakit(Gtk.Application):
             self.status('Automatic ezan enabled.' if self.config['location'] else 'Choose your Diyanet location first.')
         self.update_view()
 
-    def play(self, prayer):
-        try:
-            self.player.play(prayer, self.config['volume'])
-            self.playing = True
-            self.status('Playing Diyanet’s ' + LABELS[prayer] + ' ezan · ' + MAKAMS[prayer])
-        except Exception as e:
-            self.audio_error(str(e))
+    def play(self, prayer, scheduled=False):
+        self.play_request += 1
+        request = self.play_request
+        self.player.stop()
+        self.media.stop()
+        self.playing = False
+        if not sound_path(prayer).is_file():
+            self.audio_error('Download the official ezan recordings first.')
+            return
+        def start(warnings=None):
+            if request != self.play_request:
+                return False
+            try:
+                self.player.play(prayer, self.config['volume'])
+                self.playing = True
+                message = 'Playing Diyanet’s ' + LABELS[prayer] + ' ezan · ' + MAKAMS[prayer]
+                if warnings:
+                    message += '. ' + ' '.join(dict.fromkeys(warnings))
+                self.status(message)
+                if scheduled:
+                    self.notify('Vakit · ' + LABELS[prayer], self.config['location']['name'] + ' · Diyanet prayer time')
+            except Exception as e:
+                self.audio_error(str(e))
+            self.update_view()
+            return False
+        if self.config.get('pause_media', True):
+            self.status('Pausing other media before ezan…')
+            self.media.begin(lambda warnings: GLib.idle_add(start, warnings))
+        else:
+            start()
         self.update_view()
 
     def stop(self):
+        self.play_request += 1
+        self.media.stop()
         self.player.stop()
         self.playing = False
         self.status('Ezan stopped.')
         self.update_view()
 
     def audio_error(self, error):
+        self.play_request += 1
+        self.media.stop()
         self.playing = False
         self.status('Audio error: ' + error)
         self.notify('Ezan audio needs attention', error)
         self.update_view()
 
     def audio_ended(self):
+        self.media.stop()
         self.playing = False
         self.status('Ezan finished.')
         self.update_view()
@@ -303,9 +335,7 @@ class Vakit(Gtk.Application):
             except OSError:
                 self.status('Cannot save delivery history. Ezan skipped to prevent repeated playback. Check free disk space and file permissions.')
                 continue
-            self.play(event.prayer)
-            if self.playing:
-                self.notify('Vakit · ' + LABELS[event.prayer], self.config['location']['name'] + ' · Diyanet prayer time')
+            self.play(event.prayer, scheduled=True)
         self.update_view()
         return True
 
@@ -330,7 +360,7 @@ class Vakit(Gtk.Application):
             self.next_label.set_text('Choose a Diyanet location' if not location else 'No upcoming enabled prayer in the saved timetable')
             self.countdown.set_text('—:—:—')
         self.clock_label.set_text(now.strftime('%H:%M:%S') + '  ·  ' + self.config['timezone'])
-        self.stop_button.set_sensitive(self.playing)
+        self.stop_button.set_sensitive(self.playing or self.media.active)
 
     def show_settings(self):
         if self.settings:
@@ -404,6 +434,9 @@ class Settings(Gtk.Dialog):
         self.autostart = Gtk.CheckButton(label='Start prayer reminders when I log in to Ubuntu')
         self.autostart.set_active(autostart_path().exists())
         content.pack_start(self.autostart, False, False, 0)
+        self.pause_media = Gtk.CheckButton(label='Pause other media during ezan (Living Room + desktop players)')
+        self.pause_media.set_active(app.config.get('pause_media', True))
+        content.pack_start(self.pause_media, False, False, 0)
         self.sound_button = Gtk.Button(label='Download official Diyanet ezan recordings' if not sounds_ready() else 'Official recordings downloaded ✓ · Download again')
         self.sound_button.connect('clicked', self.download_sounds)
         content.pack_start(self.sound_button, False, False, 0)
@@ -499,7 +532,7 @@ class Settings(Gtk.Dialog):
                         country_name=self.country.get_active_text(), state_name=self.state.get_active_text())
         self.app.stop()
         self.app.config.update(location=location, timezone=zone, morning_offset=self.morning.get_value_as_int(),
-                               prayers={p: c.get_active() for p, c in self.checks.items()})
+                               prayers={p: c.get_active() for p, c in self.checks.items()}, pause_media=self.pause_media.get_active())
         self.app.persist()
         try:
             set_autostart(self.autostart.get_active())

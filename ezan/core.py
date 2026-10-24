@@ -81,7 +81,7 @@ def local_timezone():
 
 def default_config():
     return dict(location=None, timezone=local_timezone(), enabled=True, volume=0.7,
-                prayers={p: True for p in PRAYERS}, morning_offset=0)
+                prayers={p: True for p in PRAYERS}, morning_offset=0, pause_media=True)
 
 
 def location_id(value):
@@ -103,7 +103,7 @@ def load_config():
     saved = read_json(config_dir() / 'settings.json', {})
     if not isinstance(saved, dict):
         return config
-    for name in ('enabled',):
+    for name in ('enabled', 'pause_media'):
         if isinstance(saved.get(name), bool):
             config[name] = saved[name]
     if isinstance(saved.get('prayers'), dict):
