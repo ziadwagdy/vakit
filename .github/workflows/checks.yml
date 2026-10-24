@@ -1,0 +1,43 @@
+name: Checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install Ubuntu test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-gi gir1.2-gtk-3.0 gir1.2-gstreamer-1.0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good xvfb xauth dbus-x11
+      - name: Unit and security regression tests
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: Check public file contents
+        run: /usr/bin/python3 scripts/check_public.py
+      - name: Native GTK smoke check
+        run: xvfb-run -a dbus-run-session -- /usr/bin/python3 scripts/check_ui.py
+
+  static-security:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Static analysis (medium and high severity)
+        run: |
+          python3 -m venv /tmp/vakit-scan
+          /tmp/vakit-scan/bin/pip install bandit==1.9.4
+          /tmp/vakit-scan/bin/bandit -r ezan main.py install.py -ll

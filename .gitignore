@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+dist/
+.env
+.env.*
+*.pem
+*.key
+*.apk
+*.mp3
+*.ogg
+*.wav
+*.log
+settings.json
+fired.json
+times-*.json
+sounds/
